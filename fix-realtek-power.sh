@@ -1,10 +1,12 @@
 #!/bin/bash
 
 # Enhanced script to disable power management for Realtek RTL8126 NIC
-# This fixes slow network performance issues caused by power management
+# With improved boot-time reliability via retry logic
 
 LOG_FILE="/var/log/realtek-power-fix.log"
 VERIFICATION_PASSED=true
+MAX_RETRIES=30
+RETRY_DELAY=1
 
 # Function to log messages
 log_message() {
@@ -19,26 +21,42 @@ if ! command -v ethtool >/dev/null 2>&1; then
     exit 1
 fi
 
-# Find the Realtek RTL8126 interface
+# Find the Realtek RTL8126 interface with retry logic for boot timing
 REALTEK_INTERFACE=""
-for interface in /sys/class/net/*; do
-    if [ -d "$interface" ] && [ -f "$interface/device/vendor" ]; then
-        vendor=$(cat "$interface/device/vendor" 2>/dev/null)
-        device=$(cat "$interface/device/device" 2>/dev/null)
-        if [ "$vendor" = "0x10ec" ] && [ "$device" = "0x8126" ]; then
-            REALTEK_INTERFACE=$(basename "$interface")
-            log_message "Found Realtek RTL8126 interface: $REALTEK_INTERFACE"
-            break
+attempt=0
+
+log_message "Searching for Realtek RTL8126 interface (may retry up to $MAX_RETRIES times)..."
+
+while [ -z "$REALTEK_INTERFACE" ] && [ $attempt -lt $MAX_RETRIES ]; do
+    for interface in /sys/class/net/*; do
+        if [ -d "$interface" ] && [ -f "$interface/device/vendor" ]; then
+            vendor=$(cat "$interface/device/vendor" 2>/dev/null)
+            device=$(cat "$interface/device/device" 2>/dev/null)
+            if [ "$vendor" = "0x10ec" ] && [ "$device" = "0x8126" ]; then
+                REALTEK_INTERFACE=$(basename "$interface")
+                log_message "✓ Found Realtek RTL8126 interface: $REALTEK_INTERFACE (attempt $((attempt + 1)))"
+                break
+            fi
+        fi
+    done
+    
+    if [ -z "$REALTEK_INTERFACE" ]; then
+        attempt=$((attempt + 1))
+        if [ $attempt -lt $MAX_RETRIES ]; then
+            log_message "Interface not found yet, retrying in ${RETRY_DELAY}s (attempt $attempt/$MAX_RETRIES)..."
+            sleep $RETRY_DELAY
         fi
     fi
 done
 
 if [ -z "$REALTEK_INTERFACE" ]; then
-    log_message "ERROR: Realtek RTL8126 interface not found"
+    log_message "ERROR: Realtek RTL8126 interface not found after $MAX_RETRIES attempts"
     exit 1
 fi
 
-# Wait for interface to be ready
+log_message "Successfully found interface after $attempt attempts"
+
+# Additional wait to ensure driver is fully ready
 sleep 2
 
 # Disable EEE (Energy Efficient Ethernet)

@@ -1,6 +1,6 @@
 [Unit]
 Description=Fix Realtek RTL8126 Power Management
-After=network.target
+After=network.target NetworkManager.service
 Wants=network.target
 
 [Service]
@@ -9,6 +9,8 @@ ExecStart=/usr/local/bin/fix-realtek-power.sh
 RemainAfterExit=yes
 User=root
 Group=root
+StandardOutput=journal
+StandardError=journal
 
 [Install]
-WantedBy=multi-user.target 
+WantedBy=multi-user.target
